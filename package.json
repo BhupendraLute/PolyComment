@@ -12,11 +12,6 @@
 	"engines": {
 		"vscode": "^1.85.0"
 	},
-	"files": [
-		"out",
-		"LICENSE.md",
-		"README.md"
-	],
 	"categories": [
 		"Other"
 	],
