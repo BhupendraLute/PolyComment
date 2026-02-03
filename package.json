@@ -22,7 +22,7 @@
 		"onCommand:polycomment.translateSelection",
 		"onCommand:polycomment.setLanguage"
 	],
-	"main": "./out/extension.js",
+	"main": "./dist/extension.js",
 	"contributes": {
 		"viewsContainers": {
 			"activitybar": [
@@ -81,9 +81,10 @@
 		}
 	},
 	"scripts": {
-		"vscode:prepublish": "npm run compile",
-		"compile": "tsc -p ./",
-		"watch": "tsc -watch -p ./",
+		"vscode:prepublish": "npm run package",
+		"compile": "webpack --mode development",
+		"watch": "webpack --mode development --watch",
+		"package": "webpack --mode production --devtool hidden-source-map",
 		"pretest": "npm run compile && npm run lint",
 		"lint": "eslint src --ext ts",
 		"test": "node ./out/test/runTest.js"
