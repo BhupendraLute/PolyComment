@@ -119,6 +119,20 @@ export async function translateCommand(
 					"Apply",
 					"Cancel",
 				);
+
+				// Close the diff editor
+				const tabs = vscode.window.tabGroups.all.flatMap(
+					(tg) => tg.tabs,
+				);
+				const diffTab = tabs.find(
+					(tab) =>
+						tab.input instanceof vscode.TabInputTextDiff &&
+						tab.input.modified.toString() === uri.toString(),
+				);
+				if (diffTab) {
+					await vscode.window.tabGroups.close(diffTab);
+				}
+
 				if (apply === "Apply") {
 					const edit = new vscode.WorkspaceEdit();
 					edit.replace(
