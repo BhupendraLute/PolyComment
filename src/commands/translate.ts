@@ -39,6 +39,10 @@ export async function translateCommand(
 	}
 
 	// Filter for selection if needed
+	if (selectionOnly && selection.isEmpty) {
+		vscode.window.showInformationMessage("No selection to translate.");
+		return;
+	}
 	if (selectionOnly && !selection.isEmpty) {
 		const startOffset = document.offsetAt(selection.start);
 		const endOffset = document.offsetAt(selection.end);
