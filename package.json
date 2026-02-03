@@ -2,7 +2,7 @@
 	"name": "polycomment",
 	"displayName": "PolyComment",
 	"description": "Translate code comments and README files into multiple languages using lingo.dev",
-	"version": "0.0.1",
+	"version": "0.1.0",
 	"publisher": "BhupendraLute",
 	"icon": "media/icon.png",
 	"repository": {
