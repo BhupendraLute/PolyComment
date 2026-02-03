@@ -16,7 +16,12 @@
 	"categories": [
 		"Other"
 	],
-	"activationEvents": [],
+	"activationEvents": [
+		"onView:polycomment-sidebar",
+		"onCommand:polycomment.translateFile",
+		"onCommand:polycomment.translateSelection",
+		"onCommand:polycomment.setLanguage"
+	],
 	"main": "./out/extension.js",
 	"contributes": {
 		"viewsContainers": {
