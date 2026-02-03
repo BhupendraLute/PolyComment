@@ -18,12 +18,60 @@
 	"activationEvents": [],
 	"main": "./out/extension.js",
 	"contributes": {
+		"viewsContainers": {
+			"activitybar": [
+				{
+					"id": "polycomment-sidebar-view",
+					"title": "PolyComment",
+					"icon": "$(globe)"
+				}
+			]
+		},
+		"views": {
+			"polycomment-sidebar-view": [
+				{
+					"id": "polycomment-sidebar",
+					"name": "Translation Control"
+				}
+			]
+		},
 		"commands": [
 			{
-				"command": "polycomment.translateComments",
-				"title": "PolyComment: Translate Comments"
+				"command": "polycomment.translateFile",
+				"title": "PolyComment: Translate Entire File",
+				"category": "PolyComment"
+			},
+			{
+				"command": "polycomment.translateSelection",
+				"title": "PolyComment: Translate Selection",
+				"category": "PolyComment"
+			},
+			{
+				"command": "polycomment.refreshSidebar",
+				"title": "Refresh",
+				"icon": "$(refresh)"
+			},
+			{
+				"command": "polycomment.setLanguage",
+				"title": "Set Target Language"
 			}
-		]
+		],
+		"menus": {
+			"view/title": [
+				{
+					"command": "polycomment.refreshSidebar",
+					"when": "view == polycomment-sidebar",
+					"group": "navigation"
+				}
+			],
+			"editor/context": [
+				{
+					"command": "polycomment.translateSelection",
+					"group": "navigation",
+					"when": "editorHasSelection"
+				}
+			]
+		}
 	},
 	"scripts": {
 		"vscode:prepublish": "npm run compile",
