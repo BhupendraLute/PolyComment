@@ -1,24 +1,22 @@
 import * as vscode from "vscode";
 import { getComments, getMarkdownContent } from "./parser";
 import { Translator } from "./translator";
+import { SidebarProvider } from "./sidebarProvider";
 
 export function activate(context: vscode.ExtensionContext) {
 	console.log("PolyComment is now active!");
 
-	let disposable = vscode.commands.registerCommand(
-		"polycomment.translateComments",
-		async () => {
-			const editor = vscode.window.activeTextEditor;
-			if (!editor) {
-				vscode.window.showErrorMessage("No active editor found.");
-				return;
-			}
+	const sidebarProvider = new SidebarProvider(context);
+	context.subscriptions.push(
+		vscode.window.registerTreeDataProvider(
+			"polycomment-sidebar",
+			sidebarProvider,
+		),
+	);
 
-			const document = editor.document;
-			const text = document.getText();
-			const fileType = document.languageId;
-
-			// 1. Select Target Language
+	// Register Commands
+	context.subscriptions.push(
+		vscode.commands.registerCommand("polycomment.setLanguage", async () => {
 			const targetLang = await vscode.window.showQuickPick(
 				[
 					"English",
@@ -35,117 +33,174 @@ export function activate(context: vscode.ExtensionContext) {
 				],
 				{ placeHolder: "Select target language for translation" },
 			);
-
-			if (!targetLang) return;
-
-			// 2. Extract content
-			let contents: { text: string; start: number; end: number }[] = [];
-			if (
-				fileType === "typescript" ||
-				fileType === "javascript" ||
-				fileType === "typescriptreact" ||
-				fileType === "javascriptreact"
-			) {
-				contents = getComments(text);
-			} else if (fileType === "markdown") {
-				contents = await getMarkdownContent(text);
-			} else {
-				vscode.window.showWarningMessage(
-					`Language ${fileType} is not supported yet.`,
-				);
-				return;
+			if (targetLang) {
+				sidebarProvider.setLanguage(targetLang);
 			}
-
-			if (contents.length === 0) {
-				vscode.window.showInformationMessage(
-					"No translatable comments found.",
-				);
-				return;
-			}
-
-			// 3. Get API Key (from secrets storage or prompt)
-			let apiKey = await context.secrets.get("POLYCOMMENT_API_KEY");
-			if (!apiKey) {
-				apiKey = await vscode.window.showInputBox({
-					prompt: "Enter your lingo.dev API Key",
-					password: true,
-				});
-				if (apiKey) {
-					await context.secrets.store("POLYCOMMENT_API_KEY", apiKey);
-				} else {
-					return;
-				}
-			}
-
-			// 4. Translate
-			await vscode.window.withProgress(
-				{
-					location: vscode.ProgressLocation.Notification,
-					title: "Translating comments...",
-					cancellable: false,
-				},
-				async (progress) => {
-					const translator = new Translator(apiKey!);
-					const textsToTranslate = contents.map((c) => c.text);
-					const translations = await translator.translate(
-						textsToTranslate,
-						targetLang,
-					);
-
-					// 5. Reconstruct document
-					let newText = text;
-					// Sorting from end to start to avoid offset shifting issues
-					const sortedContents = [...contents]
-						.map((c, i) => ({ ...c, translation: translations[i] }))
-						.sort((a, b) => b.start - a.start);
-
-					for (const item of sortedContents) {
-						if (item.translation) {
-							newText =
-								newText.slice(0, item.start) +
-								item.translation +
-								newText.slice(item.end);
-						}
-					}
-
-					// 6. Show Preview (Diff)
-					const uri = vscode.Uri.parse(
-						`polycomment-preview:${document.uri.path}`,
-					);
-					PreviewProvider.instance.update(uri, newText);
-
-					await vscode.commands.executeCommand(
-						"vscode.diff",
-						document.uri,
-						uri,
-						`${document.fileName} (Translated)`,
-					);
-
-					const apply = await vscode.window.showInformationMessage(
-						"Do you want to apply the translations?",
-						"Apply",
-						"Cancel",
-					);
-					if (apply === "Apply") {
-						const edit = new vscode.WorkspaceEdit();
-						edit.replace(
-							document.uri,
-							new vscode.Range(0, 0, document.lineCount, 0),
-							newText,
-						);
-						await vscode.workspace.applyEdit(edit);
-					}
-				},
-			);
-		},
+		}),
 	);
 
-	context.subscriptions.push(disposable);
+	context.subscriptions.push(
+		vscode.commands.registerCommand("polycomment.refreshSidebar", () => {
+			sidebarProvider.refresh();
+		}),
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand(
+			"polycomment.translateFile",
+			async () => {
+				await translate(context, sidebarProvider.getLanguage(), false);
+			},
+		),
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand(
+			"polycomment.translateSelection",
+			async () => {
+				await translate(context, sidebarProvider.getLanguage(), true);
+			},
+		),
+	);
+
 	context.subscriptions.push(
 		vscode.workspace.registerTextDocumentContentProvider(
 			"polycomment-preview",
 			PreviewProvider.instance,
 		),
+	);
+}
+
+async function translate(
+	context: vscode.ExtensionContext,
+	targetLang: string,
+	selectionOnly: boolean,
+) {
+	const editor = vscode.window.activeTextEditor;
+	if (!editor) {
+		vscode.window.showErrorMessage("No active editor found.");
+		return;
+	}
+
+	const document = editor.document;
+	const text = document.getText();
+	const fileType = document.languageId;
+	const selection = editor.selection;
+
+	// 1. Extract content
+	let contents: { text: string; start: number; end: number }[] = [];
+	if (
+		fileType === "typescript" ||
+		fileType === "javascript" ||
+		fileType === "typescriptreact" ||
+		fileType === "javascriptreact"
+	) {
+		contents = getComments(text);
+	} else if (fileType === "markdown") {
+		contents = await getMarkdownContent(text);
+	} else {
+		vscode.window.showWarningMessage(
+			`Language ${fileType} is not supported yet.`,
+		);
+		return;
+	}
+
+	// Filter for selection if needed
+	if (selectionOnly && !selection.isEmpty) {
+		const startOffset = document.offsetAt(selection.start);
+		const endOffset = document.offsetAt(selection.end);
+		contents = contents.filter(
+			(c) => c.start >= startOffset && c.end <= endOffset,
+		);
+	}
+
+	if (contents.length === 0) {
+		vscode.window.showInformationMessage(
+			"No translatable content found in the current " +
+				(selectionOnly ? "selection" : "file") +
+				".",
+		);
+		return;
+	}
+
+	// 2. Get API Key
+	let apiKey = await context.secrets.get("POLYCOMMENT_API_KEY");
+	if (!apiKey) {
+		apiKey = await vscode.window.showInputBox({
+			prompt: "Enter your lingo.dev API Key",
+			password: true,
+		});
+		if (apiKey) {
+			await context.secrets.store("POLYCOMMENT_API_KEY", apiKey);
+		} else {
+			return;
+		}
+	}
+
+	// 3. Translate
+	await vscode.window.withProgress(
+		{
+			location: vscode.ProgressLocation.Notification,
+			title: `PolyComment: Translating to ${targetLang}...`,
+			cancellable: false,
+		},
+		async (progress) => {
+			try {
+				const translator = new Translator(apiKey!);
+				const textsToTranslate = contents.map((c) => c.text);
+				const translations = await translator.translate(
+					textsToTranslate,
+					targetLang,
+				);
+
+				// 4. Reconstruct document
+				let newText = text;
+				const sortedContents = [...contents]
+					.map((c, i) => ({ ...c, translation: translations[i] }))
+					.sort((a, b) => b.start - a.start);
+
+				for (const item of sortedContents) {
+					if (item.translation) {
+						newText =
+							newText.slice(0, item.start) +
+							item.translation +
+							newText.slice(item.end);
+					}
+				}
+
+				// 5. Show Preview (Diff)
+				const uri = vscode.Uri.parse(
+					`polycomment-preview:${document.uri.path}`,
+				);
+				PreviewProvider.instance.update(uri, newText);
+
+				await vscode.commands.executeCommand(
+					"vscode.diff",
+					document.uri,
+					uri,
+					`${document.fileName} (${targetLang} Translation)`,
+				);
+
+				const apply = await vscode.window.showInformationMessage(
+					"Do you want to apply the translations?",
+					"Apply",
+					"Cancel",
+				);
+				if (apply === "Apply") {
+					const edit = new vscode.WorkspaceEdit();
+					edit.replace(
+						document.uri,
+						new vscode.Range(0, 0, document.lineCount, 0),
+						newText,
+					);
+					await vscode.workspace.applyEdit(edit);
+				}
+			} catch (err: any) {
+				vscode.window.showErrorMessage(
+					"Translation failed: " + err.message,
+				);
+			}
+		},
 	);
 }
 
