@@ -16,12 +16,6 @@
 	"categories": [
 		"Other"
 	],
-	"activationEvents": [
-		"onView:polycomment-sidebar",
-		"onCommand:polycomment.translateFile",
-		"onCommand:polycomment.translateSelection",
-		"onCommand:polycomment.setLanguage"
-	],
 	"main": "./dist/extension.js",
 	"contributes": {
 		"viewsContainers": {
@@ -106,7 +100,6 @@
 		"@vscode/test-electron": "^2.3.8"
 	},
 	"dependencies": {
-		"typescript": "^5.3.3",
 		"remark-parse": "^11.0.0",
 		"unified": "^11.0.4",
 		"unist-util-visit": "^5.0.0",
