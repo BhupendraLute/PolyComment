@@ -1,7 +1,8 @@
 import * as vscode from "vscode";
-import { getComments, getMarkdownContent } from "./parser";
-import { Translator } from "./translator";
-import { SidebarProvider } from "./sidebarProvider";
+import { SidebarProvider } from "./providers/sidebarProvider";
+import { PreviewProvider } from "./providers/previewProvider";
+import { translateCommand } from "./commands/translate";
+import { SUPPORTED_LANGUAGES, PREVIEW_URI_SCHEME } from "./constants";
 
 export function activate(context: vscode.ExtensionContext) {
 	console.log("PolyComment is now active!");
@@ -18,19 +19,7 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand("polycomment.setLanguage", async () => {
 			const targetLang = await vscode.window.showQuickPick(
-				[
-					"English",
-					"Spanish",
-					"French",
-					"German",
-					"Chinese",
-					"Japanese",
-					"Hindi",
-					"Portuguese",
-					"Russian",
-					"Italian",
-					"Korean",
-				],
+				SUPPORTED_LANGUAGES,
 				{ placeHolder: "Select target language for translation" },
 			);
 			if (targetLang) {
@@ -49,7 +38,11 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand(
 			"polycomment.translateFile",
 			async () => {
-				await translate(context, sidebarProvider.getLanguage(), false);
+				await translateCommand(
+					context,
+					sidebarProvider.getLanguage(),
+					false,
+				);
 			},
 		),
 	);
@@ -58,166 +51,21 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand(
 			"polycomment.translateSelection",
 			async () => {
-				await translate(context, sidebarProvider.getLanguage(), true);
+				await translateCommand(
+					context,
+					sidebarProvider.getLanguage(),
+					true,
+				);
 			},
 		),
 	);
 
 	context.subscriptions.push(
 		vscode.workspace.registerTextDocumentContentProvider(
-			"polycomment-preview",
+			PREVIEW_URI_SCHEME,
 			PreviewProvider.instance,
 		),
 	);
-}
-
-async function translate(
-	context: vscode.ExtensionContext,
-	targetLang: string,
-	selectionOnly: boolean,
-) {
-	const editor = vscode.window.activeTextEditor;
-	if (!editor) {
-		vscode.window.showErrorMessage("No active editor found.");
-		return;
-	}
-
-	const document = editor.document;
-	const text = document.getText();
-	const fileType = document.languageId;
-	const selection = editor.selection;
-
-	// 1. Extract content
-	let contents: { text: string; start: number; end: number }[] = [];
-	if (
-		fileType === "typescript" ||
-		fileType === "javascript" ||
-		fileType === "typescriptreact" ||
-		fileType === "javascriptreact"
-	) {
-		contents = getComments(text);
-	} else if (fileType === "markdown") {
-		contents = await getMarkdownContent(text);
-	} else {
-		vscode.window.showWarningMessage(
-			`Language ${fileType} is not supported yet.`,
-		);
-		return;
-	}
-
-	// Filter for selection if needed
-	if (selectionOnly && !selection.isEmpty) {
-		const startOffset = document.offsetAt(selection.start);
-		const endOffset = document.offsetAt(selection.end);
-		contents = contents.filter(
-			(c) => c.start >= startOffset && c.end <= endOffset,
-		);
-	}
-
-	if (contents.length === 0) {
-		vscode.window.showInformationMessage(
-			"No translatable content found in the current " +
-				(selectionOnly ? "selection" : "file") +
-				".",
-		);
-		return;
-	}
-
-	// 2. Get API Key
-	let apiKey = await context.secrets.get("POLYCOMMENT_API_KEY");
-	if (!apiKey) {
-		apiKey = await vscode.window.showInputBox({
-			prompt: "Enter your lingo.dev API Key",
-			password: true,
-		});
-		if (apiKey) {
-			await context.secrets.store("POLYCOMMENT_API_KEY", apiKey);
-		} else {
-			return;
-		}
-	}
-
-	// 3. Translate
-	await vscode.window.withProgress(
-		{
-			location: vscode.ProgressLocation.Notification,
-			title: `PolyComment: Translating to ${targetLang}...`,
-			cancellable: false,
-		},
-		async (progress) => {
-			try {
-				const translator = new Translator(apiKey!);
-				const textsToTranslate = contents.map((c) => c.text);
-				const translations = await translator.translate(
-					textsToTranslate,
-					targetLang,
-				);
-
-				// 4. Reconstruct document
-				let newText = text;
-				const sortedContents = [...contents]
-					.map((c, i) => ({ ...c, translation: translations[i] }))
-					.sort((a, b) => b.start - a.start);
-
-				for (const item of sortedContents) {
-					if (item.translation) {
-						newText =
-							newText.slice(0, item.start) +
-							item.translation +
-							newText.slice(item.end);
-					}
-				}
-
-				// 5. Show Preview (Diff)
-				const uri = vscode.Uri.parse(
-					`polycomment-preview:${document.uri.path}`,
-				);
-				PreviewProvider.instance.update(uri, newText);
-
-				await vscode.commands.executeCommand(
-					"vscode.diff",
-					document.uri,
-					uri,
-					`${document.fileName} (${targetLang} Translation)`,
-				);
-
-				const apply = await vscode.window.showInformationMessage(
-					"Do you want to apply the translations?",
-					"Apply",
-					"Cancel",
-				);
-				if (apply === "Apply") {
-					const edit = new vscode.WorkspaceEdit();
-					edit.replace(
-						document.uri,
-						new vscode.Range(0, 0, document.lineCount, 0),
-						newText,
-					);
-					await vscode.workspace.applyEdit(edit);
-				}
-			} catch (err: any) {
-				vscode.window.showErrorMessage(
-					"Translation failed: " + err.message,
-				);
-			}
-		},
-	);
-}
-
-class PreviewProvider implements vscode.TextDocumentContentProvider {
-	static instance = new PreviewProvider();
-	private _onDidChange = new vscode.EventEmitter<vscode.Uri>();
-	readonly onDidChange = this._onDidChange.event;
-	private _content = new Map<string, string>();
-
-	update(uri: vscode.Uri, content: string) {
-		this._content.set(uri.toString(), content);
-		this._onDidChange.fire(uri);
-	}
-
-	provideTextDocumentContent(uri: vscode.Uri): string {
-		return this._content.get(uri.toString()) || "";
-	}
 }
 
 export function deactivate() {}

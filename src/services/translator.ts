@@ -1,5 +1,6 @@
 // @ts-ignore
 import { LingoDotDevEngine } from "@lingo.dev/_sdk";
+import { LANGUAGE_MAP } from "../constants";
 
 export interface TranslationResult {
 	original: string;
@@ -16,20 +17,6 @@ export class Translator {
 		});
 	}
 
-	private languageMap: Record<string, string> = {
-		English: "en",
-		Spanish: "es",
-		French: "fr",
-		German: "de",
-		Chinese: "zh",
-		Japanese: "ja",
-		Hindi: "hi",
-		Portuguese: "pt",
-		Russian: "ru",
-		Italian: "it",
-		Korean: "ko",
-	};
-
 	async translate(
 		texts: string[],
 		targetLangName: string,
@@ -38,7 +25,7 @@ export class Translator {
 			return [];
 		}
 
-		const targetLocale = this.languageMap[targetLangName] || "en";
+		const targetLocale = LANGUAGE_MAP[targetLangName] || "en";
 
 		try {
 			// Use correct SDK method: localizeStringArray
