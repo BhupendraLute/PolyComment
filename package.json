@@ -4,6 +4,7 @@
 	"description": "Translate code comments and README files into multiple languages using lingo.dev",
 	"version": "0.0.1",
 	"publisher": "BhupendraLute",
+	"icon": "media/icon.png",
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/BhupendraLute/PolyComment"
@@ -31,7 +32,8 @@
 			"polycomment-sidebar-view": [
 				{
 					"id": "polycomment-sidebar",
-					"name": "Translation Control"
+					"name": "Translation Control",
+					"icon": "media/icon.png"
 				}
 			]
 		},
